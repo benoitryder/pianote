@@ -1,0 +1,12 @@
+[package]
+name = "pianote"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
+cpal = "0.14"
+midir = "0.8"
+fluidlite = "0.2"
+wmidi = "4.0"
