@@ -8,5 +8,5 @@ anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 cpal = "0.14"
 midir = "0.8"
-fluidlite = "0.2"
+fluidlite = { version = "0.2", features = ["with-sf3", "with-stb"] }
 wmidi = "4.0"
