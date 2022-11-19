@@ -17,6 +17,7 @@ use iced::{
 };
 use crate::piano::{Piano, PianoInput};
 use crate::midi::MidiMessage;
+use crate::piano::Preset;
 
 struct Ui {
     piano: Piano,
@@ -29,6 +30,8 @@ enum Message {
     GainChanged(f32),
     KeyNoteOn(wmidi::Note),
     KeyNoteOff(wmidi::Note),
+    PresetChanged(Preset),
+
 }
 
 impl Application for Ui {
@@ -74,16 +77,36 @@ impl Application for Ui {
                     input.queue.send(MidiMessage::NoteOff(wmidi::Channel::Ch1, note, wmidi::U7::MAX)).unwrap();
                 }
             }
+            Message::PresetChanged(preset) => {
+                self.piano.set_active_preset(preset)
+                    .unwrap_or_else(|err| eprintln!("failed to set preset {:?}: {}", preset, err));
+            }
         }
         Command::none()
     }
 
     fn view(&self) -> Element<Self::Message> {
-        use iced::widget::{row, slider, text};
-        row![
-            text(format!("Gain {:4.1}", self.gain)),
-            slider(0.0..=10.0, self.gain, Message::GainChanged).step(0.1),
-        ]
+        use iced::widget::{*, column};
+        use iced::Padding;
+
+        column![
+            row![
+                text(format!("Gain {:4.1}", self.gain)),
+                slider(0.0..=10.0, self.gain, Message::GainChanged).step(0.1)
+            ].spacing(5).padding(Padding::from(5)),
+            {
+                let active_preset = self.piano.get_active_preset().ok();
+                let items = self.piano.presets_data().iter().map(|preset_data| {
+                    radio(
+                        preset_data.name.as_deref().unwrap_or("?"),
+                        preset_data.into(),
+                        active_preset,
+                        Message::PresetChanged,
+                    ).into()
+                }).collect();
+                scrollable(column(items).padding(Padding::from(5)))
+            }
+        ].max_width(200)
         .into()
     }
 

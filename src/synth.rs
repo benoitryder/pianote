@@ -1,20 +1,13 @@
-use std::path::Path;
 use anyhow::Result;
-use fluidlite::{IsFont, IsPreset};
 use crate::midi::MidiMessage;
 
 
 /// Synthetizer, using SoundFont data and processing MIDI commands
+///
+/// It only provides basic features to initialize it and write samples.
+/// Additional features should be implemented on the `Piano`.
 pub struct Synth {
-    synth: fluidlite::Synth,
-    /// Currently loaded and active FontId
-    sfont: Option<fluidlite::FontId>,
-}
-
-pub struct PresetData {
-    pub bank: u32,  // 7-bit value
-    pub num: u32,  // 7-bit value
-    pub name: Option<String>,
+    pub synth: fluidlite::Synth,
 }
 
 impl Synth {
@@ -28,41 +21,7 @@ impl Synth {
 
         let synth = fluidlite::Synth::new(settings)?;
         synth.set_gain(1.5);  //XXX Arbitrary value
-        Ok(Self { synth, sfont: None })
-    }
-
-    pub fn load_sfont<P: AsRef<Path>>(&mut self, filename: P) -> Result<()> {
-        if let Some(font_id) = self.sfont.take() {
-            self.synth.sfunload(font_id, true)?;
-        }
-        let font_id = self.synth.sfload(filename, true)?;
-        self.sfont = Some(font_id);
-        Ok(())
-    }
-
-    pub fn set_gain(&self, gain: f32) {
-        self.synth.set_gain(gain);
-    }
-
-    /// Iterate on presets of the current SFont
-    pub fn presets(&self) -> Vec<PresetData> {
-        let sfont = self.sfont.and_then(|id| self.synth.get_sfont_by_id(id));
-        if let Some(sfont) = sfont {
-            (0..=127)
-                .flat_map(|bank| (0..=127).map(move |num| (bank, num)))
-                .filter_map(move |(bank, num)| {
-                    sfont
-                        .get_preset(bank, num)
-                        .map(|preset| PresetData {
-                            bank,
-                            num,
-                            name: preset.get_name().map(|s| s.into()),
-                        })
-                })
-                .collect()
-        } else {
-            vec![]
-        }
+        Ok(Self { synth })
     }
 
     pub fn send_midi_message(&self, message: MidiMessage) -> Result<()> {
