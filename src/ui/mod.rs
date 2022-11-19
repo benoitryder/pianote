@@ -27,9 +27,9 @@ impl Application for Ui {
     fn new(piano: Piano) -> (Self, Command<Self::Message>) {
         let ui = Self {
             piano,
-            gain: 0.2,  // FluidSynth default "synth.gain" value
+            gain: 1.5,  // FluidSynth default "synth.gain" value
         };
-        ui.piano.set_gain(ui.gain).expect("failed to set initial gain");
+        ui.piano.set_gain(ui.gain);
         (ui, Command::none())
     }
 
@@ -41,11 +41,9 @@ impl Application for Ui {
         match message {
             Message::GainChanged(gain) => {
                 self.gain = gain;
-                self.piano.set_gain(self.gain)
+                self.piano.set_gain(self.gain);
             }
-        }.unwrap_or_else(|err| {
-            eprintln!("UI: failed to process {:?}: {}", message, err);
-        });
+        }
         Command::none()
     }
 

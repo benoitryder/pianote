@@ -1,6 +1,5 @@
 use std::sync::mpsc::Sender;
 use anyhow::{Context, Result};
-use crate::synth::SynthCommand;
 
 pub type MidiMessage = wmidi::MidiMessage<'static>;
 
@@ -51,11 +50,11 @@ impl MidiInput {
         Ok(MidiSource(connection))
     }
 
-    pub fn connect_queue(self, port: MidiInputPort, queue: Sender<SynthCommand>) -> Result<MidiSource> {
+    pub fn connect_queue(self, port: MidiInputPort, queue: Sender<MidiMessage>) -> Result<MidiSource> {
         self.connect_callback(port, move |data| {
             let message = wmidi::MidiMessage::try_from(data).expect("failed to parse MIDI message");
             if let Some(message) = message.drop_unowned_sysex() {
-                queue.send(SynthCommand::Midi(message)).expect("failed to send MIDI message to the queue");
+                queue.send(message).expect("failed to send MIDI message to the queue");
             }
         })
     }

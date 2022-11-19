@@ -1,16 +1,13 @@
 use std::sync::mpsc::{self, Sender};
-use std::path::PathBuf;
+use std::path::Path;
 use anyhow::{Context, Result};
-use crate::midi::{MidiInput, MidiInputPort, MidiSource};
+use crate::midi::{MidiInput, MidiInputPort, MidiMessage, MidiSource};
 use crate::audio::AudioOutput;
-use crate::synth::SynthCommand;
 
 
 pub struct Piano {
-    #[allow(dead_code)]
-    midi_source: Option<MidiSource>,
+    _input: Box<dyn std::any::Any>,
     audio_output: AudioOutput,
-    synth_queue: Sender<SynthCommand>,
 }
 
 impl Piano {
@@ -18,7 +15,7 @@ impl Piano {
     pub fn with_default_port() -> Result<Self> {
         let midi = MidiInput::new()?;
         let port = midi.default_port().context("no MIDI input port")?;
-        Self::from_midi_and_port(midi, port)
+        Self::from_input((midi, port))
     }
 
     /// Use input MIDI port with the given name
@@ -26,30 +23,22 @@ impl Piano {
         let midi = MidiInput::new()?;
         let port = midi.ports()?.into_iter().find(|p| p.name() == port)
             .with_context(|| format!("MIDI input port not found: {}", port))?;
-        Self::from_midi_and_port(midi, port)
-    }
-
-    fn from_midi_and_port(midi: MidiInput, port: MidiInputPort) -> Result<Self> {
-        let (tx, rx) = mpsc::channel();
-        let midi_source = midi.connect_queue(port, tx.clone())?;
-        let audio_output = AudioOutput::new(rx)?;
-        Ok(Self {
-            midi_source: Some(midi_source),
-            audio_output,
-            synth_queue: tx,
-        })
+        Self::from_input((midi, port))
     }
 
     /// Don't use a midi input (intended for tests/debug)
     pub fn without_input() -> Result<Self> {
+        Self::from_input(())
+    }
+
+    fn from_input<I: PianoInput>(input: I) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let audio_output = AudioOutput::new(rx)?;
         Ok(Self {
-            midi_source: None,
-            audio_output,
-            synth_queue: tx,
+            _input: Box::new(input.with_queue(tx)?),
+            audio_output: AudioOutput::new(rx)?,
         })
     }
+
 
     pub fn play(&self) -> Result<()> {
         self.audio_output.play()
@@ -59,15 +48,38 @@ impl Piano {
         self.audio_output.pause()
     }
 
-    pub fn load_sfont(&self, path: PathBuf) -> Result<()> {
-        self.synth_queue.send(SynthCommand::LoadSfont(path))?;
+    pub fn load_sfont<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        self.audio_output.lock_synth().load_sfont(path)?;
         Ok(())
     }
 
-    pub fn set_gain(&self, gain: f32) -> Result<()> {
-        eprintln!("Set gain: {}", gain);
-        self.synth_queue.send(SynthCommand::SetGain(gain))?;
-        Ok(())
+    pub fn set_gain(&self, gain: f32) {
+        self.audio_output.lock_synth().set_gain(gain);
     }
 }
+
+trait PianoInput {
+    type Holder: 'static;
+
+    /// Create a piano input sending MIDI message to a queue
+    fn with_queue(self, queue: Sender<MidiMessage>) -> Result<Self::Holder>;
+}
+
+impl PianoInput for (MidiInput, MidiInputPort) {
+    type Holder = MidiSource;
+
+    fn with_queue(self, queue: Sender<MidiMessage>) -> Result<Self::Holder> {
+        let (midi, port) = self;
+        midi.connect_queue(port, queue)
+    }
+}
+
+impl PianoInput for () {
+    type Holder = ();
+
+    fn with_queue(self, _queue: Sender<MidiMessage>) -> Result<Self::Holder> {
+        Ok(())  // No input
+    }
+}
+
 

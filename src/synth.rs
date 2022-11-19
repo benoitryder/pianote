@@ -1,14 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use anyhow::Result;
 use crate::midi::MidiMessage;
-
-
-#[derive(Debug)]
-pub enum SynthCommand {
-    Midi(MidiMessage),
-    LoadSfont(PathBuf),
-    SetGain(f32),
-}
 
 
 pub struct Synth {
@@ -27,7 +19,7 @@ impl Synth {
             .set(sample_rate);
 
         let synth = fluidlite::Synth::new(settings)?;
-        synth.set_gain(1.5); //TODO
+        synth.set_gain(1.5);  //XXX Arbitrary value
         Ok(Self { synth, sfont: None })
     }
 
@@ -40,12 +32,8 @@ impl Synth {
         Ok(())
     }
 
-    pub fn process_command(&mut self, command: SynthCommand) -> Result<()> {
-        match command {
-            SynthCommand::Midi(message) => self.send_midi_message(message),
-            SynthCommand::LoadSfont(path) => self.load_sfont(path),
-            SynthCommand::SetGain(gain) => { self.synth.set_gain(gain); Ok(()) },
-        }
+    pub fn set_gain(&self, gain: f32) {
+        self.synth.set_gain(gain);
     }
 
     pub fn send_midi_message(&self, message: MidiMessage) -> Result<()> {

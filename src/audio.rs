@@ -1,28 +1,34 @@
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::mpsc::Receiver;
 use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use crate::synth::{Synth, SynthCommand};
+use crate::synth::Synth;
+use crate::midi::MidiMessage;
 
 
 pub struct AudioOutput {
     stream: cpal::Stream,
+    synth: Arc<Mutex<Synth>>,
 }
 
 impl AudioOutput {
-    pub fn new(queue: Receiver<SynthCommand>) -> Result<Self> {
+    pub fn new(queue: Receiver<MidiMessage>) -> Result<Self> {
 
         let host = cpal::default_host();
         let device = host.default_output_device().context("no audio output device available")?;
 
         let config = Self::get_output_config(&device)?;
 
-        let mut synth = Synth::new(config.sample_rate.0 as f64)?;
+        let synth = Synth::new(config.sample_rate.0 as f64)?;
+        let synth = Arc::new(Mutex::new(synth));
 
+        let audio_synth = Arc::clone(&synth);
         let data_fn = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            let synth = audio_synth.lock().unwrap();
             // Convert input MIDI messages
-            for command in queue.try_iter() {
-                synth.process_command(command)
-                    .unwrap_or_else(|err| eprintln!("failed to process synth command: {}", err));
+            for message in queue.try_iter() {
+                synth.send_midi_message(message)
+                    .unwrap_or_else(|err| eprintln!("failed to process MIDI message: {}", err));
             }
 
             // The stream and the synth use the same buffer format
@@ -36,7 +42,7 @@ impl AudioOutput {
             err_fn,
         )?;
 
-        Ok(Self { stream })
+        Ok(Self { stream, synth })
     }
 
     pub fn play(&self) -> Result<()> {
@@ -47,6 +53,10 @@ impl AudioOutput {
     pub fn pause(&self) -> Result<()> {
         self.stream.pause()?;
         Ok(())
+    }
+
+    pub fn lock_synth(&self) -> MutexGuard<'_, Synth> {
+        self.synth.lock().unwrap()
     }
 
     /// Get a suitable output config
