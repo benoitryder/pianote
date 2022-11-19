@@ -10,3 +10,8 @@ cpal = "0.14"
 midir = "0.8"
 fluidlite = { version = "0.2", features = ["with-sf3", "with-stb"] }
 wmidi = "4.0"
+iced = { version = "0.5", optional = true }
+
+[features]
+default = ["ui"]
+ui = ["dep:iced"]

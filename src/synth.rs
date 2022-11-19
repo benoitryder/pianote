@@ -7,6 +7,7 @@ use crate::midi::MidiMessage;
 pub enum SynthCommand {
     Midi(MidiMessage),
     LoadSfont(PathBuf),
+    SetGain(f32),
 }
 
 
@@ -26,6 +27,7 @@ impl Synth {
             .set(sample_rate);
 
         let synth = fluidlite::Synth::new(settings)?;
+        synth.set_gain(1.5); //TODO
         Ok(Self { synth, sfont: None })
     }
 
@@ -42,6 +44,7 @@ impl Synth {
         match command {
             SynthCommand::Midi(message) => self.send_midi_message(message),
             SynthCommand::LoadSfont(path) => self.load_sfont(path),
+            SynthCommand::SetGain(gain) => { self.synth.set_gain(gain); Ok(()) },
         }
     }
 

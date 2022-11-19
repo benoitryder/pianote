@@ -21,7 +21,7 @@ fn list_ports() -> Result<()> {
 
 #[derive(Parser)]
 struct Cli {
-    /// Input port to use (default: first one)
+    /// Input port to use, `NONE` to disable input (default: first input)
     #[arg(short, long, name = "NAME")]
     input: Option<String>,
 
@@ -32,6 +32,18 @@ struct Cli {
     /// List ports and exit
     #[arg(long)]
     list_ports: bool,
+
+    /// Run headless (no UI), implied if compiled without it
+    #[arg(long)]
+    headless: bool,
+}
+
+/// Run without UI
+fn run_headless() {
+    println!("Playing...");
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+    }
 }
 
 
@@ -43,22 +55,25 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let piano = if let Some(input) = cli.input {
-        Piano::with_port(&input)
-    } else {
-        Piano::new()
+    let piano = match cli.input.as_deref() {
+        Some("NONE") => Piano::without_input(),
+        Some(input) => Piano::with_port_name(input),
+        None => Piano::with_default_port(),
     }?;
 
     if let Some(path) = cli.sound_font {
-        piano.load_sfont(path.to_owned())?;
+        piano.load_sfont(path)?;
     } else {
         println!("No SoundFont provided, using system default (if any)");
     }
     piano.play()?;
 
-    println!("Playing...");
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+    if cli.headless || !cfg!(feature = "ui") {
+        run_headless();
+    } else {
+        pianote::ui::run(piano)?;
     }
+
+    Ok(())
 }
 
