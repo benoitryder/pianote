@@ -50,6 +50,10 @@ impl Piano {
         Ok(())
     }
 
+    pub fn has_input(&self) -> bool {
+        self.input.is_some()
+    }
+
     fn lock_synth(&self) -> MutexGuard<'_, Synth> {
         self.synth.lock().unwrap()
     }
@@ -75,6 +79,9 @@ impl Piano {
 
 /// Piano input, generating MIDI events 
 pub trait PianoInput {
+    /// Connect the input to the given queue
+    ///
+    /// Input must be disconnected with returned data is dropped.
     fn connect_input(self, queue: Sender<MidiMessage>) -> Result<Box<dyn std::any::Any>>;
 }
 
