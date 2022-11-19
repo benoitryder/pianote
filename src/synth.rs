@@ -1,5 +1,6 @@
 use std::path::Path;
 use anyhow::Result;
+use fluidlite::{IsFont, IsPreset};
 use crate::midi::MidiMessage;
 
 
@@ -7,6 +8,12 @@ pub struct Synth {
     synth: fluidlite::Synth,
     /// Currently loaded and active FontId
     sfont: Option<fluidlite::FontId>,
+}
+
+pub struct PresetData {
+    pub bank: u32,  // 7-bit value
+    pub num: u32,  // 7-bit value
+    pub name: Option<String>,
 }
 
 impl Synth {
@@ -55,6 +62,27 @@ impl Synth {
     pub fn write_samples(&self, samples: &mut [f32]) -> Result<()> {
         self.synth.write(samples)?;
         Ok(())
+    }
+
+    /// Iterate on presets of the current SFont
+    pub fn presets(&self) -> Vec<PresetData> {
+        let sfont = self.sfont.and_then(|id| self.synth.get_sfont_by_id(id));
+        if let Some(sfont) = sfont {
+            (0..=127)
+                .flat_map(|bank| (0..=127).map(move |num| (bank, num)))
+                .filter_map(move |(bank, num)| {
+                    sfont
+                        .get_preset(bank, num)
+                        .map(|preset| PresetData {
+                            bank,
+                            num,
+                            name: preset.get_name().map(|s| s.into()),
+                        })
+                })
+                .collect()
+        } else {
+            vec![]
+        }
     }
 }
 
