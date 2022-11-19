@@ -1,13 +1,16 @@
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::mpsc::{self, Sender};
 use std::path::Path;
 use anyhow::{Context, Result};
+use crate::audio::{AudioOutput, AudioOutputConfig};
 use crate::midi::{MidiInput, MidiInputPort, MidiMessage, MidiSource};
-use crate::audio::AudioOutput;
+use crate::synth::Synth;
 
 
 pub struct Piano {
     _input: Box<dyn std::any::Any>,
-    audio_output: AudioOutput,
+    output: AudioOutput,
+    synth: Arc<Mutex<Synth>>,
 }
 
 impl Piano {
@@ -33,28 +36,52 @@ impl Piano {
 
     fn from_input<I: PianoInput>(input: I) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
+
+        let output_config = AudioOutputConfig::new()?;
+        let synth = Synth::new(output_config.sample_rate())?;
+        let synth = Arc::new(Mutex::new(synth));
+
+        let output = {
+            let synth = Arc::clone(&synth);
+            output_config.stream(move |data: &mut [f32]| {
+                let synth = synth.lock().unwrap();
+                // Convert input MIDI messages
+                for message in rx.try_iter() {
+                    synth.send_midi_message(message)
+                        .unwrap_or_else(|err| eprintln!("failed to process MIDI message: {}", err));
+                }
+                // Write the next samples
+                synth.write_samples(data)
+                    .unwrap_or_else(|err| eprintln!("failed to generate samples: {}", err));
+            })
+        }?;
+
         Ok(Self {
             _input: Box::new(input.with_queue(tx)?),
-            audio_output: AudioOutput::new(rx)?,
+            output,
+            synth,
         })
     }
 
+    fn lock_synth(&self) -> MutexGuard<'_, Synth> {
+        self.synth.lock().unwrap()
+    }
 
     pub fn play(&self) -> Result<()> {
-        self.audio_output.play()
+        self.output.play()
     }
 
     pub fn pause(&self) -> Result<()> {
-        self.audio_output.pause()
+        self.output.pause()
     }
 
     pub fn load_sfont<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        self.audio_output.lock_synth().load_sfont(path)?;
+        self.lock_synth().load_sfont(path)?;
         Ok(())
     }
 
     pub fn set_gain(&self, gain: f32) {
-        self.audio_output.lock_synth().set_gain(gain);
+        self.lock_synth().set_gain(gain);
     }
 }
 
@@ -81,5 +108,4 @@ impl PianoInput for () {
         Ok(())  // No input
     }
 }
-
 

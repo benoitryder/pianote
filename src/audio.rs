@@ -1,62 +1,47 @@
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::sync::mpsc::Receiver;
 use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use crate::synth::Synth;
-use crate::midi::MidiMessage;
 
 
-pub struct AudioOutput {
-    stream: cpal::Stream,
-    synth: Arc<Mutex<Synth>>,
+/// Elements used to create an audio output stream
+pub struct AudioOutputConfig {
+    device: cpal::Device,
+    config: cpal::StreamConfig,
 }
 
-impl AudioOutput {
-    pub fn new(queue: Receiver<MidiMessage>) -> Result<Self> {
+/// An audio output stream
+pub struct AudioOutput {
+    stream: cpal::Stream,
+}
 
+impl AudioOutputConfig {
+    pub fn new() -> Result<Self> {
         let host = cpal::default_host();
         let device = host.default_output_device().context("no audio output device available")?;
-
         let config = Self::get_output_config(&device)?;
+        Ok(Self { device, config })
+    }
 
-        let synth = Synth::new(config.sample_rate.0 as f64)?;
-        let synth = Arc::new(Mutex::new(synth));
+    pub fn sample_rate(&self) -> f64 {
+        self.config.sample_rate.0 as f64
+    }
 
-        let audio_synth = Arc::clone(&synth);
+    /// Create a stream from a function called to write the next output samples  
+    pub fn stream<S>(self, mut next_samples: S) -> Result<AudioOutput>
+    where
+        S: FnMut(&mut [f32]) + Send + 'static,
+    {
         let data_fn = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-            let synth = audio_synth.lock().unwrap();
-            // Convert input MIDI messages
-            for message in queue.try_iter() {
-                synth.send_midi_message(message)
-                    .unwrap_or_else(|err| eprintln!("failed to process MIDI message: {}", err));
-            }
-
-            // The stream and the synth use the same buffer format
-            synth.write_samples(data.as_mut()).expect("failed to write samples");
+            next_samples(data);
         };
         let err_fn = |err| eprintln!("an error occurred on audio stream: {}", err);
 
-        let stream = device.build_output_stream(
-            &config,
+        let stream = self.device.build_output_stream(
+            &self.config,
             data_fn,
             err_fn,
         )?;
 
-        Ok(Self { stream, synth })
-    }
-
-    pub fn play(&self) -> Result<()> {
-        self.stream.play()?;
-        Ok(())
-    }
-
-    pub fn pause(&self) -> Result<()> {
-        self.stream.pause()?;
-        Ok(())
-    }
-
-    pub fn lock_synth(&self) -> MutexGuard<'_, Synth> {
-        self.synth.lock().unwrap()
+        Ok(AudioOutput { stream })
     }
 
     /// Get a suitable output config
@@ -67,6 +52,18 @@ impl AudioOutput {
             }
         }
         anyhow::bail!("no stereo audio output configuration");
+    }
+}
+
+impl AudioOutput {
+    pub fn play(&self) -> Result<()> {
+        self.stream.play()?;
+        Ok(())
+    }
+
+    pub fn pause(&self) -> Result<()> {
+        self.stream.pause()?;
+        Ok(())
     }
 }
 
