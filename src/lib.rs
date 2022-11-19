@@ -6,4 +6,8 @@ mod synth;
 pub mod ui;
 
 pub use midi::MidiInput;
-pub use piano::Piano;
+pub use piano::{
+    Piano,
+    PianoInput,
+    PianoMidiInput,
+};

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use clap::Parser;
 use anyhow::Result;
-use pianote::{MidiInput, Piano};
+use pianote::{MidiInput, Piano, PianoMidiInput};
 
 
 fn list_ports() -> Result<()> {
@@ -55,11 +55,11 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let piano = match cli.input.as_deref() {
-        Some("NONE") => Piano::without_input(),
-        Some(input) => Piano::with_port_name(input),
-        None => Piano::with_default_port(),
-    }?;
+    let mut piano = Piano::new()?;
+    match cli.input.as_deref() {
+        Some("NONE") => {}
+        input => piano.set_input(PianoMidiInput(input))?,
+    };
 
     if let Some(path) = cli.sound_font {
         piano.load_sfont(path)?;
